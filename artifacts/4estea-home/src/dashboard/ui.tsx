@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, animate, motion, type Transition } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -104,7 +105,9 @@ export function Drawer({ open, onClose, title, children, footer }: { open: boole
   }, [open, onClose]);
 
   const off = phone ? { y: '100%' } : { x: '100%' };
-  return (
+  // Portaled to <body> so a scaled or moving parent can never trap the fixed panel.
+  return createPortal(
+    <div className="d-portal">
     <AnimatePresence>
       {open && (
         <>
@@ -137,6 +140,8 @@ export function Drawer({ open, onClose, title, children, footer }: { open: boole
         </>
       )}
     </AnimatePresence>
+    </div>,
+    document.body,
   );
 }
 

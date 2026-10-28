@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'framer-motion';
 import logoFullInk from '@assets/logo-full-ink_1787167544226.png';
-import { actions, clock, useStore } from '@/lib/store';
+import { actions, clock, isToday, useStore } from '@/lib/store';
 import OrdersView from '@/dashboard/orders';
 import MenuView from '@/dashboard/menu';
 import NumbersView from '@/dashboard/numbers';
@@ -34,7 +34,7 @@ function Shell() {
   const open = useStore((s) => s.open);
   const orders = useStore((s) => s.orders);
   const toast = useToast();
-  const waiting = orders.filter((o) => o.status !== 'done').length;
+  const waiting = orders.filter((o) => o.status !== 'done' && isToday(o.pickupAt)).length;
 
   useEffect(() => {
     document.title = 'Dashboard · 4ESTEA';

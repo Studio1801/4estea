@@ -1,8 +1,13 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import { actions, clock, getState, money2, orderTotal, useStore, type Order } from '@/lib/store';
-import { CountUp, Drawer, DrawnCheck, Stamp, ease, glide, rise, sway, useToast } from './ui';
+import { actions, clock, getState, isToday, money2, orderTotal, useStore, type Order } from '@/lib/store';
+import { CountUp, Drawer, DrawnCheck, Stamp, ease, glide, rise, spring, sway, useMedia, useToast } from './ui';
+import WeekBoard from './week';
+
+type Zoom = 'day' | 'week';
+// Remembered while switching tabs.
+let lastZoom: Zoom = 'day';
 
 /* ---------- motion bookkeeping ---------- */
 
@@ -50,12 +55,19 @@ function partOfDay() {
 /* ---------- view ---------- */
 
 export default function OrdersView() {
-  const orders = useStore((s) => s.orders);
+  const allOrders = useStore((s) => s.orders);
+  const orders = useMemo(() => allOrders.filter((o) => isToday(o.pickupAt)), [allOrders]);
   const open = useStore((s) => s.open);
   const now = useNow();
   const toast = useToast();
   const spikeRef = useRef<HTMLButtonElement>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [zoom, setZoomState] = useState<Zoom>(lastZoom);
+  const phone = useMedia('(max-width: 760px)');
+  const setZoom = (z: Zoom) => { lastZoom = z; setZoomState(z); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // Zoom toward today's column in the week grid (a row on phones).
+  const col = ((new Date().getDay() + 6) % 7 + 0.5) / 7 * 100;
+  const origin = phone ? `50% ${col}%` : `${col}% 0%`;
 
   const making = useMemo(() => orders.filter((o) => o.status === 'new').sort((a, b) => a.pickupAt - b.pickupAt), [orders]);
   const ready = useMemo(() => orders.filter((o) => o.status === 'ready').sort((a, b) => a.pickupAt - b.pickupAt), [orders]);
@@ -90,55 +102,104 @@ export default function OrdersView() {
   return (
     <LayoutGroup>
       <motion.div className="d-page-head" variants={rise}>
-        <div>
-          <h1>{weekday} <em>{partOfDay()}</em></h1>
-          <p className="d-page-sub">
-            <b><CountUp value={making.length} format={(n) => String(Math.round(n))} duration={0.5} /></b> making,{' '}
-            <b><CountUp value={ready.length} format={(n) => String(Math.round(n))} duration={0.5} /></b> on the counter,{' '}
-            <b><CountUp value={done.length} format={(n) => String(Math.round(n))} duration={0.8} /></b> picked up.{' '}
-            <b><CountUp value={booked} format={(n) => `$${n.toFixed(2)}`} duration={1} /></b> booked today.
-          </p>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={zoom} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22, ease }}>
+            {zoom === 'day' ? (
+              <>
+                <h1>{weekday} <em>{partOfDay()}</em></h1>
+                <p className="d-page-sub">
+                  <b><CountUp value={making.length} format={(n) => String(Math.round(n))} duration={0.5} /></b> making,{' '}
+                  <b><CountUp value={ready.length} format={(n) => String(Math.round(n))} duration={0.5} /></b> on the counter,{' '}
+                  <b><CountUp value={done.length} format={(n) => String(Math.round(n))} duration={0.8} /></b> picked up.{' '}
+                  <b><CountUp value={booked} format={(n) => `$${n.toFixed(2)}`} duration={1} /></b> booked today.
+                </p>
+              </>
+            ) : (
+              <>
+                <h1>The <em>week</em></h1>
+                <p className="d-page-sub">Tap a day for its prep list. Tap today to zoom back into the rail.</p>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
+        <div className="d-head-actions">
+          <div className="d-zoom" role="tablist" aria-label="Zoom">
+            {(['day', 'week'] as Zoom[]).map((z) => (
+              <button key={z} type="button" role="tab" aria-selected={zoom === z} className={zoom === z ? 'active' : ''} onClick={() => setZoom(z)}>
+                {zoom === z && <motion.span className="d-filter-pill" layoutId="zoom-pill" transition={spring} />}
+                <span>{z === 'day' ? 'Today' : 'Week'}</span>
+              </button>
+            ))}
+          </div>
+          <motion.button type="button" className="d-btn-primary" onClick={test} whileTap={{ scale: 0.95 }}>
+            <Plus size={17} strokeWidth={2.5} /> Send a test order
+          </motion.button>
         </div>
-        <motion.button type="button" className="d-btn-primary" onClick={test} whileTap={{ scale: 0.95 }}>
-          <Plus size={17} strokeWidth={2.5} /> Send a test order
-        </motion.button>
       </motion.div>
 
-      <motion.section className="d-rail-section" variants={rise} aria-label="Orders being made">
-        <div className="d-label"><span>On the rail</span><small>{making.length === 0 ? 'nothing to make' : `${making.length} to make`}</small></div>
-        <div className={`d-rail ${making.length === 0 && open ? 'is-empty' : ''}`}>
-          <AnimatePresence mode="popLayout" initial={false}>
-            {!open && <ClosedSign key="closed-sign" />}
-            {making.map((o, i) => (
-              <Ticket key={o.id} order={o} now={now} tilt={RAIL_TILT[(o.number + i) % RAIL_TILT.length]} onAction={() => markReady(o)} />
-            ))}
-            {making.length === 0 && open && (
-              <motion.p key="empty" className="d-rail-empty" layout initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.3 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
-                Rail is clear. Nice work.
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </div>
-      </motion.section>
+      <div className="d-zoom-stage">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {zoom === 'day' ? (
+            <motion.div
+              key="day"
+              className="d-zoom-layer"
+              style={{ transformOrigin: origin }}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ scale: { duration: 0.6, ease }, opacity: { duration: 0.35 } }}
+            >
+          <section className="d-rail-section" aria-label="Orders being made">
+            <div className="d-label"><span>On the rail</span><small>{making.length === 0 ? 'nothing to make' : `${making.length} to make`}</small></div>
+            <div className={`d-rail ${making.length === 0 && open ? 'is-empty' : ''}`}>
+              <AnimatePresence mode="popLayout" initial={false}>
+                {!open && <ClosedSign key="closed-sign" />}
+                {making.map((o, i) => (
+                  <Ticket key={o.id} order={o} now={now} tilt={RAIL_TILT[(o.number + i) % RAIL_TILT.length]} onAction={() => markReady(o)} />
+                ))}
+                {making.length === 0 && open && (
+                  <motion.p key="empty" className="d-rail-empty" layout initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.3 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
+                    Rail is clear. Nice work.
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </section>
 
-      <motion.section className="d-counter-section" variants={rise} aria-label="Orders ready for pickup">
-        <div className="d-label"><span>On the counter</span><small>{ready.length === 0 ? 'nothing waiting' : `${ready.length} waiting for pickup`}</small></div>
-        <div className="d-counter">
-          <div className="d-counter-tickets">
-            <AnimatePresence mode="popLayout" initial={false}>
-              {ready.map((o, i) => (
-                <Ticket key={o.id} order={o} now={now} tilt={COUNTER_TILT[(o.number + i) % COUNTER_TILT.length]} onAction={(el) => pickedUp(o, el)} />
-              ))}
-              {ready.length === 0 && (
-                <motion.p key="empty" className="d-counter-empty" layout initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.3 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
-                  Nothing waiting on the counter.
-                </motion.p>
-              )}
-            </AnimatePresence>
-          </div>
-          <Spike ref={spikeRef} count={done.length} total={done.reduce((s, o) => s + orderTotal(o), 0)} onOpen={() => setLogOpen(true)} />
-        </div>
-      </motion.section>
+          <section className="d-counter-section" aria-label="Orders ready for pickup">
+            <div className="d-label"><span>On the counter</span><small>{ready.length === 0 ? 'nothing waiting' : `${ready.length} waiting for pickup`}</small></div>
+            <div className="d-counter">
+              <div className="d-counter-tickets">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {ready.map((o, i) => (
+                    <Ticket key={o.id} order={o} now={now} tilt={COUNTER_TILT[(o.number + i) % COUNTER_TILT.length]} onAction={(el) => pickedUp(o, el)} />
+                  ))}
+                  {ready.length === 0 && (
+                    <motion.p key="empty" className="d-counter-empty" layout initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.3 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
+                      Nothing waiting on the counter.
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
+              <Spike ref={spikeRef} count={done.length} total={done.reduce((s, o) => s + orderTotal(o), 0)} onOpen={() => setLogOpen(true)} />
+            </div>
+          </section>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="week"
+              className="d-zoom-layer"
+              style={{ transformOrigin: origin }}
+              initial={{ opacity: 0, scale: 1.3 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.3 }}
+              transition={{ scale: { duration: 0.6, ease }, opacity: { duration: 0.35 } }}
+            >
+              <WeekBoard onZoomToday={() => setZoom('day')} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <Drawer open={logOpen} onClose={() => setLogOpen(false)} title={<>Picked up <em>today</em></>}>
         <ul className="d-log">

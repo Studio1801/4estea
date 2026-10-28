@@ -41,7 +41,7 @@ export type Order = {
 };
 
 type State = {
-  v: 2;
+  v: 3;
   day: string;
   open: boolean;
   menu: Item[];
@@ -49,7 +49,7 @@ type State = {
   nextNumber: number;
 };
 
-const KEY = '4estea-demo-v2';
+const KEY = '4estea-demo-v3';
 
 const defaultPhotos: Record<string, string> = {
   liempo: liempoBowl,
@@ -93,7 +93,8 @@ const NAMES = ['Ana', 'Marco', 'Jess', 'Paolo', 'Lily', 'Bea', 'Carlo', 'Mae', '
 const NOTES = ['Less ice please', 'Extra sweet chili', 'No scallions', 'Extra garlic rice', 'Half sweet', 'Oat milk if you have it'];
 
 function line(menu: Item[], id: string, qty = 1): OrderLine {
-  const item = menu.find((m) => m.id === id)!;
+  // Fall back to the original dish if the owner removed it from the menu.
+  const item = menu.find((m) => m.id === id) ?? sampleMenu().find((m) => m.id === id)!;
   return { name: item.name, qty, price: item.price };
 }
 
@@ -136,8 +137,77 @@ function sampleOrders(menu: Item[]): Order[] {
   return [...past, ...live];
 }
 
+/* ---------- days ---------- */
+
+export const startOfDay = (d: Date | number) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+export const sameDay = (a: Date | number, b: Date | number) => startOfDay(a).getTime() === startOfDay(b).getTime();
+export const isToday = (t: number) => sameDay(t, Date.now());
+export const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+/** Monday of the week containing d. */
+export const weekStart = (d: Date | number) => { const x = startOfDay(d); return addDays(x, -((x.getDay() + 6) % 7)); };
+
+const TOP_ROTATION = ['Grilled Liempo Bowl', 'Buko Latte', 'Lumpiang Shanghai', 'Grilled Liempo Bowl', 'Classic 4ESTEA Matcha', 'Buko Latte', 'Longsilog Bowl'];
+
+/** A finished day in the sample history: totals and how sales spread over the hours (10 am to 8 pm). */
+export function daySummary(date: Date) {
+  const d = startOfDay(date);
+  const rand = seeded(d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate());
+  const dow = d.getDay();
+  const weekend = dow === 0 || dow === 6 || dow === 5;
+  const orders = Math.round((weekend ? 33 : 24) + rand() * 10);
+  const avg = 17 + rand() * 2.6;
+  const shape = [0.3, 0.7, 1.2, 1.0, 0.55, 0.45, 0.6, 0.95, 1.1, 0.7, 0.35].map((v) => v * (0.75 + rand() * 0.5));
+  const sum = shape.reduce((a, b) => a + b, 0);
+  const sales = Math.round(orders * avg);
+  return {
+    orders,
+    sales,
+    hours: shape.map((v) => Math.round((v / sum) * sales)),
+    top: TOP_ROTATION[(d.getDate() + dow) % TOP_ROTATION.length],
+  };
+}
+
+const PREORDER_TEMPLATES: { name: string; note?: string; h: number; m: number; lines: [string, number][] }[] = [
+  { name: 'Rica', note: 'Office lunch for 12', h: 11, m: 30, lines: [['liempo', 6], ['adobo', 6], ['buko', 12]] },
+  { name: 'Joy', note: 'Birthday, extra napkins', h: 15, m: 0, lines: [['lumpia', 4], ['turon', 6], ['classic', 8]] },
+  { name: 'Ben', note: 'Team meeting', h: 9, m: 30, lines: [['longsilog', 5], ['buko', 5]] },
+  { name: 'Mae', h: 14, m: 0, lines: [['mango', 6], ['turon', 6]] },
+  { name: 'Dom', note: 'Side door please', h: 18, m: 0, lines: [['wings', 4], ['lumpia', 3]] },
+  { name: 'Kat', note: 'Church group', h: 12, m: 30, lines: [['adobo', 8], ['lumpia', 4], ['classic', 8]] },
+];
+
+/** Bigger orders booked for later days, so the week has something to plan around. */
+function samplePreorders(menu: Item[]): Order[] {
+  const today = startOfDay(Date.now());
+  const out: Order[] = [];
+  let n = 300;
+  for (let i = 1; i <= 13; i++) {
+    const day = addDays(today, i);
+    const rand = seeded(day.getDate() * 131 + day.getMonth());
+    const count = i <= 6 ? (rand() < 0.25 ? 0 : rand() < 0.65 ? 1 : 2) : (rand() < 0.55 ? 0 : 1);
+    const used = new Set<number>();
+    for (let k = 0; k < count; k++) {
+      let t = Math.floor(rand() * PREORDER_TEMPLATES.length);
+      while (used.has(t)) t = (t + 1) % PREORDER_TEMPLATES.length;
+      used.add(t);
+      const tpl = PREORDER_TEMPLATES[t];
+      const at = new Date(day); at.setHours(tpl.h, tpl.m, 0, 0);
+      out.push({
+        id: `pre${i}-${k}`,
+        number: n++,
+        name: tpl.name,
+        note: tpl.note,
+        lines: tpl.lines.map(([id, q]) => line(menu, id, q)),
+        pickupAt: at.getTime(),
+        status: 'new',
+      });
+    }
+  }
+  return out;
+}
+
 function fresh(menu = sampleMenu()): State {
-  return { v: 2, day: todayKey(), open: true, menu, orders: sampleOrders(menu), nextNumber: 108 };
+  return { v: 3, day: todayKey(), open: true, menu, orders: [...sampleOrders(menu), ...samplePreorders(menu)], nextNumber: 108 };
 }
 
 function load(): State {
@@ -145,7 +215,7 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as State;
-      if (parsed.v === 2 && Array.isArray(parsed.menu)) {
+      if (parsed.v === 3 && Array.isArray(parsed.menu)) {
         // New day: keep the menu, start a new set of sample orders.
         if (parsed.day !== todayKey()) return { ...fresh(parsed.menu), open: parsed.open };
         return parsed;

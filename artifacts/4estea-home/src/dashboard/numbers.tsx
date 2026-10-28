@@ -1,19 +1,10 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight } from 'lucide-react';
-import { clock, orderTotal, photoFor, useStore, type Order } from '@/lib/store';
+import { addDays, clock, daySummary, isToday, orderTotal, photoFor, sameDay, useStore, weekStart, type Order } from '@/lib/store';
 import { CountUp, ease, rise } from './ui';
 
-// Earlier days this week are sample figures so the week has a shape.
-const SAMPLE_WEEK = [
-  { orders: 29, sales: 498 },
-  { orders: 24, sales: 431 },
-  { orders: 27, sales: 476 },
-  { orders: 22, sales: 402 },
-  { orders: 34, sales: 611 },
-  { orders: 41, sales: 742 },
-  { orders: 33, sales: 588 },
-];
+// Earlier days come from the sample history in the store, so this matches the week board.
 const SAMPLE_TOP: Record<string, number> = {
   'Grilled Liempo Bowl': 31, 'Buko Latte': 27, 'Lumpiang Shanghai': 19, 'Classic 4ESTEA Matcha': 17, 'Mango Matcha': 12, 'Banana Turon': 11,
 };
@@ -46,7 +37,8 @@ function useHours(orders: Order[]) {
 }
 
 export default function NumbersView() {
-  const orders = useStore((s) => s.orders);
+  const allOrders = useStore((s) => s.orders);
+  const orders = useMemo(() => allOrders.filter((o) => isToday(o.pickupAt)), [allOrders]);
   const menu = useStore((s) => s.menu);
   const hours = useHours(orders);
 
@@ -61,15 +53,19 @@ export default function NumbersView() {
   }, [orders]);
 
   const todayIdx = (new Date().getDay() + 6) % 7;
-  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => ({
-    day: d,
-    sales: i < todayIdx ? SAMPLE_WEEK[i].sales : i === todayIdx ? stats.sales : 0,
-    orders: i < todayIdx ? SAMPLE_WEEK[i].orders : i === todayIdx ? stats.count : 0,
-    state: i < todayIdx ? 'past' : i === todayIdx ? 'today' : 'later',
-  }));
-  const weekSales = week.reduce((s, d) => s + d.sales, 0);
+  const monday = weekStart(Date.now());
+  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => {
+    const date = addDays(monday, i);
+    const booked = allOrders.filter((o) => sameDay(o.pickupAt, date)).reduce((s, o) => s + orderTotal(o), 0);
+    return {
+      day: d,
+      sales: i < todayIdx ? daySummary(date).sales : i === todayIdx ? stats.sales : booked,
+      state: i < todayIdx ? 'past' : i === todayIdx ? 'today' : 'later',
+    };
+  });
+  const weekSales = week.filter((d) => d.state !== 'later').reduce((s, d) => s + d.sales, 0);
   const weekMax = Math.max(...week.map((d) => d.sales), 1);
-  const lastWeekSame = todayIdx > 0 ? SAMPLE_WEEK[todayIdx - 1].sales : null;
+  const lastWeekSame: number | null = daySummary(addDays(new Date(), -1)).sales;
   const maxTop = stats.topList[0]?.[1] ?? 1;
   const weekday = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
@@ -125,14 +121,14 @@ export default function NumbersView() {
         <motion.section className="d-panel" variants={rise}>
           <div className="d-panel-head">
             <h2>This week</h2>
-            <span>{dollars(weekSales)} so far</span>
+            <span>{dollars(weekSales)} so far, rest is booked ahead</span>
           </div>
           <div className="d-week" role="img" aria-label="Sales by day this week">
             {week.map((d, i) => (
               <div className={`d-day d-day--${d.state}`} key={d.day}>
-                <motion.span className="d-day-val" initial={{ opacity: 0 }} animate={{ opacity: d.state === 'later' ? 0 : 1 }} transition={{ delay: 0.6 + i * 0.05 }}>{dollars(d.sales)}</motion.span>
+                <motion.span className="d-day-val" initial={{ opacity: 0 }} animate={{ opacity: d.state === 'later' && !d.sales ? 0 : 1 }} transition={{ delay: 0.6 + i * 0.05 }}>{dollars(d.sales)}</motion.span>
                 <div className="d-day-track">
-                  <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: d.state === 'later' ? 1 : Math.max(d.sales / weekMax, 0.03) }} transition={{ type: 'spring', stiffness: 140, damping: 20, delay: 0.3 + i * 0.05 }} />
+                  <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: d.state === 'later' && !d.sales ? 1 : Math.max(d.sales / weekMax, 0.03) }} transition={{ type: 'spring', stiffness: 140, damping: 20, delay: 0.3 + i * 0.05 }} />
                 </div>
                 <span className="d-day-label">{d.state === 'today' ? 'Today' : d.day}</span>
               </div>
