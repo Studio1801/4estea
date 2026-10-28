@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowUpRight, Menu as MenuIcon, X } from 'lucide-react';
 import { type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,7 +6,6 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import Dashboard from '@/pages/dashboard';
 import { groups, money, photoFor, useStore } from '@/lib/store';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import bowlsSpread from '@assets/bowls-spread_1787167544225.jpg';
@@ -19,6 +18,13 @@ import logoFullCream from '@assets/image_1787172722682.png';
 import logoFullInk from '@assets/logo-full-ink_1787167544226.png';
 
 const queryClient = new QueryClient();
+// Loaded only on /dashboard so the public site stays light.
+const Dashboard = lazy(() => import('@/pages/dashboard'));
+const DashboardRoute = () => (
+  <Suspense fallback={<div style={{ minHeight: '100vh', background: '#173d2b' }} />}>
+    <Dashboard />
+  </Suspense>
+);
 const SQUARE_URL = 'https://4estea.square.site/?item=1';
 const INSTAGRAM_URL = 'https://www.instagram.com/4estea/';
 
@@ -266,7 +272,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={Home} />
-        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/dashboard" component={DashboardRoute} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

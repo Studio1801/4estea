@@ -136,6 +136,8 @@ if (typeof window !== 'undefined') {
   });
 }
 
+export const getState = () => state;
+
 export function useStore<T>(select: (s: State) => T): T {
   return useSyncExternalStore(
     (cb) => {
