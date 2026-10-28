@@ -3,16 +3,19 @@ import bukoLatte from '@assets/buko-latte_1787167544227.jpg';
 import liempoBowl from '@assets/liempo-bowl_1787167544226.jpg';
 import originalMatcha from '@assets/original-sticker-matcha_1787167544226.jpg';
 import turonBasket from '@assets/turon-basket_1787167544226.jpg';
-import bowlsSpread from '@assets/bowls-spread_1787167544225.jpg';
+import adoboCrop from '@assets/crop-adobo.jpg';
+import longsilogCrop from '@assets/crop-longsilog.jpg';
+import lumpiaCrop from '@assets/crop-lumpia.jpg';
+import wingsCrop from '@assets/crop-wings.jpg';
 
 // Demo store. Everything lives in this browser (localStorage), so the
 // dashboard and the public page stay in sync without a backend.
 
 export type GroupId = 'bowls' | 'snacks' | 'drinks';
-export const groups: { id: GroupId; name: string; kind: 'food' | 'drinks' }[] = [
-  { id: 'bowls', name: 'Rice bowls', kind: 'food' },
-  { id: 'snacks', name: 'Snacks', kind: 'food' },
-  { id: 'drinks', name: 'Boba, matcha, kape', kind: 'drinks' },
+export const groups: { id: GroupId; name: string; short: string; kind: 'food' | 'drinks' }[] = [
+  { id: 'bowls', name: 'Rice bowls', short: 'Bowls', kind: 'food' },
+  { id: 'snacks', name: 'Snacks', short: 'Snacks', kind: 'food' },
+  { id: 'drinks', name: 'Boba, matcha, kape', short: 'Drinks', kind: 'drinks' },
 ];
 
 export type Item = {
@@ -38,7 +41,7 @@ export type Order = {
 };
 
 type State = {
-  v: 1;
+  v: 2;
   day: string;
   open: boolean;
   menu: Item[];
@@ -46,14 +49,17 @@ type State = {
   nextNumber: number;
 };
 
-const KEY = '4estea-demo-v1';
+const KEY = '4estea-demo-v2';
 
 const defaultPhotos: Record<string, string> = {
   liempo: liempoBowl,
+  longsilog: longsilogCrop,
+  adobo: adoboCrop,
+  lumpia: lumpiaCrop,
   turon: turonBasket,
+  wings: wingsCrop,
   buko: bukoLatte,
   classic: originalMatcha,
-  longsilog: bowlsSpread,
 };
 
 export const photoFor = (item?: Item) => (item ? item.photo ?? defaultPhotos[item.id] : undefined);
@@ -73,6 +79,19 @@ const sampleMenu = (): Item[] => [
 const todayKey = () => new Date().toDateString();
 const MIN = 60_000;
 
+// Small seeded random so the sample day looks the same on every reload.
+function seeded(seed: number) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const NAMES = ['Ana', 'Marco', 'Jess', 'Paolo', 'Lily', 'Bea', 'Carlo', 'Mae', 'Noel', 'Rica', 'Josh', 'Tina', 'Dom', 'Kat', 'Migs', 'Joy', 'Ellie', 'Ben', 'Nina', 'Raf'];
+const NOTES = ['Less ice please', 'Extra sweet chili', 'No scallions', 'Extra garlic rice', 'Half sweet', 'Oat milk if you have it'];
+
 function line(menu: Item[], id: string, qty = 1): OrderLine {
   const item = menu.find((m) => m.id === id)!;
   return { name: item.name, qty, price: item.price };
@@ -80,17 +99,45 @@ function line(menu: Item[], id: string, qty = 1): OrderLine {
 
 function sampleOrders(menu: Item[]): Order[] {
   const now = Date.now();
-  return [
-    { id: 'o1', number: 101, name: 'Ana', lines: [line(menu, 'liempo'), line(menu, 'buko')], pickupAt: now - 25 * MIN, status: 'done' },
-    { id: 'o2', number: 102, name: 'Marco', lines: [line(menu, 'lumpia', 2)], note: 'Extra sweet chili', pickupAt: now - 4 * MIN, status: 'ready' },
-    { id: 'o3', number: 103, name: 'Jess', lines: [line(menu, 'mango'), line(menu, 'turon')], note: 'Less ice please', pickupAt: now + 9 * MIN, status: 'new' },
-    { id: 'o4', number: 104, name: 'Paolo', lines: [line(menu, 'longsilog'), line(menu, 'classic')], pickupAt: now + 22 * MIN, status: 'new' },
-    { id: 'o5', number: 105, name: 'Lily', lines: [line(menu, 'adobo'), line(menu, 'wings')], pickupAt: now + 40 * MIN, status: 'new' },
+  const rand = seeded(new Date().getDate() * 7919);
+  const ids = menu.map((m) => m.id);
+  // Popular things show up more often.
+  const weighted = [...ids, 'liempo', 'liempo', 'buko', 'buko', 'lumpia', 'classic'];
+  const pick = () => weighted[Math.floor(rand() * weighted.length)];
+
+  const past: Order[] = [];
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    // Spread over the last five hours, bunched around lunch-ish.
+    const t = now - (5 * 60 - Math.pow(i / count, 0.85) * (5 * 60 - 35)) * MIN;
+    const a = pick();
+    const b = pick();
+    const lines = [line(menu, a, rand() < 0.2 ? 2 : 1)];
+    if (b !== a && rand() < 0.7) lines.push(line(menu, b));
+    past.push({
+      id: `p${i}`,
+      number: 84 + i,
+      name: NAMES[(i * 7) % NAMES.length],
+      lines,
+      note: rand() < 0.25 ? NOTES[Math.floor(rand() * NOTES.length)] : undefined,
+      pickupAt: Math.round(t / MIN) * MIN,
+      status: 'done',
+    });
+  }
+
+  const live: Order[] = [
+    { id: 'o1', number: 102, name: 'Marco', lines: [line(menu, 'lumpia', 2)], note: 'Extra sweet chili', pickupAt: now - 6 * MIN, status: 'ready' },
+    { id: 'o2', number: 103, name: 'Bea', lines: [line(menu, 'buko'), line(menu, 'turon')], pickupAt: now + 2 * MIN, status: 'ready' },
+    { id: 'o3', number: 104, name: 'Jess', lines: [line(menu, 'mango'), line(menu, 'turon')], note: 'Less ice please', pickupAt: now + 8 * MIN, status: 'new' },
+    { id: 'o4', number: 105, name: 'Paolo', lines: [line(menu, 'longsilog'), line(menu, 'classic')], pickupAt: now + 19 * MIN, status: 'new' },
+    { id: 'o5', number: 106, name: 'Lily', lines: [line(menu, 'adobo'), line(menu, 'wings'), line(menu, 'buko', 2)], pickupAt: now + 31 * MIN, status: 'new' },
+    { id: 'o6', number: 107, name: 'Carlo', lines: [line(menu, 'liempo')], note: 'No scallions', pickupAt: now + 46 * MIN, status: 'new' },
   ];
+  return [...past, ...live];
 }
 
 function fresh(menu = sampleMenu()): State {
-  return { v: 1, day: todayKey(), open: true, menu, orders: sampleOrders(menu), nextNumber: 106 };
+  return { v: 2, day: todayKey(), open: true, menu, orders: sampleOrders(menu), nextNumber: 108 };
 }
 
 function load(): State {
@@ -98,7 +145,7 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as State;
-      if (parsed.v === 1 && Array.isArray(parsed.menu)) {
+      if (parsed.v === 2 && Array.isArray(parsed.menu)) {
         // New day: keep the menu, start a new set of sample orders.
         if (parsed.day !== todayKey()) return { ...fresh(parsed.menu), open: parsed.open };
         return parsed;
@@ -163,11 +210,15 @@ export const actions = {
   removeItem(id: string) {
     commit({ ...state, menu: state.menu.filter((m) => m.id !== id) });
   },
+  restoreItem(item: Item, index: number) {
+    const menu = [...state.menu];
+    menu.splice(Math.min(index, menu.length), 0, item);
+    commit({ ...state, menu });
+  },
   setStatus(id: string, status: OrderStatus) {
     commit({ ...state, orders: state.orders.map((o) => (o.id === id ? { ...o, status } : o)) });
   },
   testOrder() {
-    const names = ['Rica', 'Noel', 'Bea', 'Carlo', 'Mae', 'Josh', 'Tina', 'Dom'];
     const available = state.menu.filter((m) => !m.soldOut && m.price > 0 && m.name);
     if (!available.length) return null;
     const pick = () => available[Math.floor(Math.random() * available.length)];
@@ -175,12 +226,15 @@ export const actions = {
     const second = pick();
     const lines: OrderLine[] = [{ name: first.name, qty: 1, price: first.price }];
     if (second.id !== first.id) lines.push({ name: second.name, qty: 1, price: second.price });
+    const taken = new Set(state.orders.filter((o) => o.status !== 'done').map((o) => o.name));
+    const name = NAMES.find((n) => !taken.has(n) && Math.random() < 0.4) ?? NAMES.find((n) => !taken.has(n)) ?? 'Guest';
     const order: Order = {
-      id: `o${Date.now()}`,
+      id: `t${Date.now()}`,
       number: state.nextNumber,
-      name: names[Math.floor(Math.random() * names.length)],
+      name,
       lines,
-      pickupAt: Date.now() + (15 + Math.floor(Math.random() * 3) * 5) * MIN,
+      note: Math.random() < 0.35 ? NOTES[Math.floor(Math.random() * NOTES.length)] : undefined,
+      pickupAt: Date.now() + (12 + Math.floor(Math.random() * 4) * 5) * MIN,
       status: 'new',
     };
     commit({ ...state, orders: [...state.orders, order], nextNumber: state.nextNumber + 1 });
