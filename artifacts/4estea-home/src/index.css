@@ -207,6 +207,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .menu-item-desc { color: var(--muted); font-size: 13px; margin-top: 3px; }
 .menu-item-price { color: var(--coral); font: 600 13px var(--app-font-sans); white-space: nowrap; }
 
+.menu-item--out .menu-item-name, .menu-item--out .menu-item-desc { opacity: .5; }
+.menu-item--out .menu-item-price { color: var(--muted); font-weight: 500; }
+.closed-note { background: var(--coral); color: var(--cream); text-align: center; padding: 14px 20px; font-size: 15px; }
+.closed-note a { text-decoration: underline; text-underline-offset: 3px; }
+
 .gather { background: var(--saffron); color: var(--ink); padding: 116px 0; position: relative; }
 .gather::before { content: 'SHARE'; position:absolute; right:-25px; top:16px; font: 700 clamp(130px, 21vw, 330px)/.8 var(--app-font-serif); color: rgba(255,250,240,.13); letter-spacing:-.09em; pointer-events:none; }
 .gather-content { position: relative; z-index: 1; max-width: 720px; }

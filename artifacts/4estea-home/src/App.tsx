@@ -6,6 +6,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import Dashboard from '@/pages/dashboard';
+import { groups, money, photoFor, useStore } from '@/lib/store';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import bowlsSpread from '@assets/bowls-spread_1787167544225.jpg';
 import bukoLatte from '@assets/buko-latte_1787167544227.jpg';
@@ -19,37 +21,6 @@ import logoFullInk from '@assets/logo-full-ink_1787167544226.png';
 const queryClient = new QueryClient();
 const SQUARE_URL = 'https://4estea.square.site/?item=1';
 const INSTAGRAM_URL = 'https://www.instagram.com/4estea/';
-
-type MenuItem = { name: string; description: string; price: string };
-const menuGroups: { name: string; kind: string; items: MenuItem[] }[] = [
-  {
-    name: 'Rice bowls',
-    kind: 'food',
-    items: [
-      { name: 'Grilled Liempo Bowl', description: 'Charred pork belly, garlic bits, pickled cucumber and carrot, steamed rice.', price: '$14' },
-      { name: 'Longsilog Bowl', description: 'Garlic fried rice, longganisa, two eggs sunny side up, atchara.', price: '$13' },
-      { name: 'Pork Adobo Bowl', description: 'Braised pork, quail eggs, scallions, steamed rice.', price: '$13' },
-    ],
-  },
-  {
-    name: 'Snacks',
-    kind: 'food',
-    items: [
-      { name: 'Lumpiang Shanghai', description: 'Ten pieces with sweet chili dip.', price: '$9' },
-      { name: 'Banana Turon', description: 'Banana and jackfruit, fried to a caramel shell.', price: '$7' },
-      { name: 'Garlic Fried Chicken Wings', description: 'Six pieces, served hot and crisp.', price: '$11' },
-    ],
-  },
-  {
-    name: 'Boba, matcha, kape',
-    kind: 'drinks',
-    items: [
-      { name: 'Buko Latte', description: 'Coconut cream and espresso, over ice.', price: '$6.50' },
-      { name: 'Mango Matcha', description: 'Ceremonial matcha, mango, coconut milk.', price: '$7' },
-      { name: 'Classic 4ESTEA Matcha', description: 'Matcha, milk, brown sugar. The one we started with.', price: '$6.50' },
-    ],
-  },
-];
 
 function Reveal({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={`reveal ${className}`}>{children}</div>;
@@ -74,7 +45,16 @@ function Home() {
     return () => observer.disconnect();
   }, []);
 
-  const visibleGroups = menuGroups.filter((group) => filter === 'all' || group.kind === filter);
+  const menu = useStore((s) => s.menu);
+  const open = useStore((s) => s.open);
+  const byId = (id: string) => menu.find((m) => m.id === id);
+  const liempo = byId('liempo');
+  const buko = byId('buko');
+  const turon = byId('turon');
+  const visibleGroups = groups
+    .filter((group) => filter === 'all' || group.kind === filter)
+    .map((group) => ({ ...group, items: menu.filter((m) => m.group === group.id && m.name) }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <div className="site-shell">
@@ -124,6 +104,12 @@ function Home() {
           <div className="hero-note" aria-hidden="true"><span className="hero-note-line" /><span>made to share</span></div>
         </div>
       </header>
+
+      {!open && (
+        <div className="closed-note" role="status">
+          We are closed today. Check <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer">Instagram</a> for when we are back.
+        </div>
+      )}
 
       <div className="ticker" aria-label="4ESTEA offerings">
         <div className="ticker-track">
@@ -181,7 +167,7 @@ function Home() {
             </Reveal>
             <Reveal className="menu-feature">
               <article className="feature-card">
-                <img src={liempoBowl} alt="Grilled liempo pork belly bowl with garlic rice and fresh vegetables" width="974" height="768" loading="lazy" />
+                <img src={photoFor(liempo) ?? liempoBowl} alt="Grilled liempo pork belly bowl with garlic rice and fresh vegetables" width="974" height="768" loading="lazy" />
                 <div className="feature-card-copy">
                   <div className="eyebrow">The house favorite</div>
                   <h3>Grilled Liempo Bowl</h3>
@@ -189,7 +175,7 @@ function Home() {
                 </div>
               </article>
               <article className="feature-card feature-card--small">
-                <img src={bukoLatte} alt="Ice buko latte with coconut cream and espresso surrounded by tropical leaves" width="768" height="1024" loading="lazy" />
+                <img src={photoFor(buko) ?? bukoLatte} alt="Ice buko latte with coconut cream and espresso surrounded by tropical leaves" width="768" height="1024" loading="lazy" />
                 <div className="feature-card-copy">
                   <div className="eyebrow">New on the table</div>
                   <h3>Ice Buko Latte</h3>
@@ -198,7 +184,7 @@ function Home() {
               </article>
             </Reveal>
             <Reveal className="menu-photo-note">
-              <img src={turonBasket} alt="Glazed banana turon in a green basket, ready for sharing" width="768" height="1024" loading="lazy" />
+              <img src={photoFor(turon) ?? turonBasket} alt="Glazed banana turon in a green basket, ready for sharing" width="768" height="1024" loading="lazy" />
               <div><div className="eyebrow">For the sweet tooth</div><p className="serif">Banana Turon</p><span>Caramel shell, soft center, zero leftovers.</span></div>
             </Reveal>
             <div className="menu-categories" aria-label="Filter menu categories">
@@ -217,9 +203,9 @@ function Home() {
                 <Reveal className="menu-group menu-group--visible" key={group.name}>
                   <h3 className="serif">{group.name}<span>{group.kind === 'food' ? 'made to share' : 'made to linger'}</span></h3>
                   {group.items.map((item) => (
-                    <div className="menu-item" key={item.name} data-testid={`menu-item-${item.name.toLowerCase().replaceAll(' ', '-')}`}>
+                    <div className={`menu-item ${item.soldOut ? 'menu-item--out' : ''}`} key={item.id} data-testid={`menu-item-${item.id}`}>
                       <div><div className="menu-item-name serif">{item.name}</div><div className="menu-item-desc">{item.description}</div></div>
-                      <div className="menu-item-price">{item.price}</div>
+                      <div className="menu-item-price">{item.soldOut ? 'Sold out today' : money(item.price)}</div>
                     </div>
                   ))}
                 </Reveal>
@@ -280,6 +266,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/dashboard" component={Dashboard} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>
