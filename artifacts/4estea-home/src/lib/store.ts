@@ -146,25 +146,64 @@ export const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDat
 /** Monday of the week containing d. */
 export const weekStart = (d: Date | number) => { const x = startOfDay(d); return addDays(x, -((x.getDay() + 6) % 7)); };
 
-const TOP_ROTATION = ['Grilled Liempo Bowl', 'Buko Latte', 'Lumpiang Shanghai', 'Grilled Liempo Bowl', 'Classic 4ESTEA Matcha', 'Buko Latte', 'Longsilog Bowl'];
+const HOUR_SHAPE = [0.3, 0.7, 1.2, 1.0, 0.55, 0.45, 0.6, 0.95, 1.1, 0.7, 0.35];
+const pastCache = new Map<number, Order[]>();
 
-/** A finished day in the sample history: totals and how sales spread over the hours (10 am to 8 pm). */
-export function daySummary(date: Date) {
+/** Every order of a finished sample day (10 am to 8 pm), the same on each load. */
+export function pastOrders(date: Date): Order[] {
   const d = startOfDay(date);
+  const hit = pastCache.get(d.getTime());
+  if (hit) return hit;
+  const menu = sampleMenu();
   const rand = seeded(d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate());
   const dow = d.getDay();
   const weekend = dow === 0 || dow === 6 || dow === 5;
-  const orders = Math.round((weekend ? 33 : 24) + rand() * 10);
-  const avg = 17 + rand() * 2.6;
-  const shape = [0.3, 0.7, 1.2, 1.0, 0.55, 0.45, 0.6, 0.95, 1.1, 0.7, 0.35].map((v) => v * (0.75 + rand() * 0.5));
-  const sum = shape.reduce((a, b) => a + b, 0);
-  const sales = Math.round(orders * avg);
-  return {
-    orders,
-    sales,
-    hours: shape.map((v) => Math.round((v / sum) * sales)),
-    top: TOP_ROTATION[(d.getDate() + dow) % TOP_ROTATION.length],
-  };
+  const count = Math.round((weekend ? 33 : 24) + rand() * 10);
+  const weights = HOUR_SHAPE.map((v) => v * (0.75 + rand() * 0.5));
+  const total = weights.reduce((a, b) => a + b, 0);
+  const ids = menu.map((m) => m.id);
+  const weighted = [...ids, 'liempo', 'liempo', 'buko', 'buko', 'lumpia', 'classic'];
+  const pick = () => weighted[Math.floor(rand() * weighted.length)];
+  const out: Order[] = [];
+  for (let i = 0; i < count; i++) {
+    let r = rand() * total;
+    let h = 0;
+    while (h < weights.length - 1 && r > weights[h]) { r -= weights[h]; h++; }
+    const at = new Date(d);
+    at.setHours(10 + h, Math.floor(rand() * 12) * 5, 0, 0);
+    const a = pick();
+    const b = pick();
+    const lines = [line(menu, a, rand() < 0.2 ? 2 : 1)];
+    if (b !== a && rand() < 0.7) lines.push(line(menu, b));
+    out.push({
+      id: `past${d.getTime()}-${i}`,
+      number: 0,
+      name: NAMES[Math.floor(rand() * NAMES.length)],
+      lines,
+      note: rand() < 0.18 ? NOTES[Math.floor(rand() * NOTES.length)] : undefined,
+      pickupAt: at.getTime(),
+      status: 'done',
+    });
+  }
+  out.sort((x, y) => x.pickupAt - y.pickupAt).forEach((o, i) => { o.number = i + 1; });
+  pastCache.set(d.getTime(), out);
+  return out;
+}
+
+/** Totals for a finished sample day: money, orders, sales per hour and the best seller. */
+export function daySummary(date: Date) {
+  const list = pastOrders(date);
+  const hours = HOUR_SHAPE.map(() => 0);
+  const sold = new Map<string, number>();
+  let sales = 0;
+  list.forEach((o) => {
+    const t = orderTotal(o);
+    sales += t;
+    hours[Math.min(hours.length - 1, Math.max(0, new Date(o.pickupAt).getHours() - 10))] += t;
+    o.lines.forEach((l) => sold.set(l.name, (sold.get(l.name) ?? 0) + l.qty));
+  });
+  const top = [...sold.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  return { orders: list.length, sales: Math.round(sales), hours: hours.map(Math.round), top, list };
 }
 
 const PREORDER_TEMPLATES: { name: string; note?: string; h: number; m: number; lines: [string, number][] }[] = [

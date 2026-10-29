@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'framer-motion';
 import logoFullInk from '@assets/logo-full-ink_1787167544226.png';
 import { actions, clock, isToday, useStore } from '@/lib/store';
 import OrdersView from '@/dashboard/orders';
 import MenuView from '@/dashboard/menu';
 import NumbersView from '@/dashboard/numbers';
-import { Switch, ToastProvider, page, spring, useToast } from '@/dashboard/ui';
+import { Switch, ToastProvider, ease, spring, useToast } from '@/dashboard/ui';
 import '@/dashboard.css';
 
 type Tab = 'orders' | 'menu' | 'numbers';
@@ -15,6 +15,16 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'numbers', label: 'Numbers' },
 ];
 const SITE = import.meta.env.BASE_URL;
+
+// Pages slide the way the tabs are ordered, and sharpen as they land.
+const pageVariants = {
+  enter: (d: number) => ({ opacity: 0, x: d * 34, filter: 'blur(5px)' }),
+  show: {
+    opacity: 1, x: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' },
+    transition: { duration: 0.6, ease, delayChildren: 0.05, staggerChildren: 0.08 },
+  },
+  exit: (d: number) => ({ opacity: 0, x: d * -26, filter: 'blur(4px)', transition: { duration: 0.2, ease: [0.4, 0, 1, 1] as const } }),
+};
 
 export default function Dashboard() {
   return (
@@ -45,8 +55,10 @@ function Shell() {
     return () => meta.remove();
   }, []);
 
+  const dir = useRef(1);
   const go = (t: Tab) => {
     if (t === tab) return;
+    dir.current = TABS.findIndex((x) => x.id === t) > TABS.findIndex((x) => x.id === tab) ? 1 : -1;
     setTab(t);
     history.replaceState(null, '', `#${t}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -62,7 +74,7 @@ function Shell() {
 
   return (
     <div className="dash">
-      <header className="d-top">
+      <motion.header className="d-top" initial={{ y: -76, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.8, ease }}>
         <div className="d-top-inner">
           <a className="d-brand" href={SITE} aria-label="Back to the 4ESTEA website">
             <img src={logoFullInk} alt="" width="859" height="1044" />
@@ -99,16 +111,22 @@ function Shell() {
             <LiveClock />
             <label className={`d-open ${open ? '' : 'closed'}`}>
               <i aria-hidden="true" />
-              <span>{open ? 'Open' : 'Closed'}</span>
+              <span className="d-open-word">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span key={open ? 'o' : 'c'} initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -14, opacity: 0 }} transition={{ duration: 0.3, ease }}>
+                    {open ? 'Open' : 'Closed'}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
               <Switch on={open} onChange={setOpen} label="Open for orders today" />
             </label>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       <main className="d-main">
-        <AnimatePresence mode="wait">
-          <motion.div key={tab} initial="hidden" animate="show" exit="exit" variants={page}>
+        <AnimatePresence mode="wait" initial={false} custom={dir.current}>
+          <motion.div key={tab} custom={dir.current} initial="enter" animate="show" exit="exit" variants={pageVariants}>
             {tab === 'orders' && <OrdersView />}
             {tab === 'menu' && <MenuView />}
             {tab === 'numbers' && <NumbersView />}

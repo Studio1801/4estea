@@ -62,7 +62,7 @@ export default function MenuView() {
         </div>
         <div className="d-head-actions">
           <a className="d-link" href={`${SITE}#menu`} target="_blank" rel="noopener noreferrer">See your website <ArrowUpRight size={15} /></a>
-          <motion.button type="button" className="d-btn-primary" onClick={add} whileTap={{ scale: 0.95 }}>
+          <motion.button type="button" className="d-btn-primary" onClick={add} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 420, damping: 24 } }} whileTap={{ scale: 0.95 }}>
             <Plus size={17} strokeWidth={2.5} /> Add a dish
           </motion.button>
         </div>
@@ -95,7 +95,7 @@ export default function MenuView() {
         footer={item && (
           <>
             <button type="button" className="d-text-btn d-text-btn--danger" onClick={() => remove(item)}><Trash2 size={16} /> Remove dish</button>
-            <motion.button type="button" className="d-btn-primary" onClick={close} whileTap={{ scale: 0.96 }}>Done</motion.button>
+            <motion.button type="button" className="d-btn-primary" onClick={close} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 420, damping: 24 } }} whileTap={{ scale: 0.96 }}>Done</motion.button>
           </>
         )}
       >
@@ -117,6 +117,7 @@ const MenuCard = motionForward(function MenuCard({ item, index, onOpen, onAvaila
       initial={{ opacity: 0, y: 18, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1, transition: { ...glide, delay: Math.min(index, 8) * 0.03 } }}
       exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.2 } }}
+      whileHover={{ y: -5, transition: { type: 'spring', stiffness: 420, damping: 26 } }}
       transition={glide}
     >
       <button type="button" className="d-dish-open" onClick={onOpen} aria-label={`Edit ${item.name}`}>

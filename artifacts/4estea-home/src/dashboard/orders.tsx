@@ -3,7 +3,8 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { actions, clock, getState, isToday, money2, orderTotal, useStore, type Order } from '@/lib/store';
 import { CountUp, Drawer, DrawnCheck, Stamp, ease, glide, rise, spring, sway, useMedia, useToast } from './ui';
-import WeekBoard from './week';
+import WeekBoard, { rememberWeek, resetWeek } from './week';
+import DayDetail, { DayHead } from './day';
 
 type Zoom = 'day' | 'week';
 // Remembered while switching tabs.
@@ -45,6 +46,8 @@ function mergeRefs<T>(...refs: (Ref<T> | undefined)[]) {
 const RAIL_TILT = [-1.4, 1.1, -0.5, 1.6, -1.1, 0.6];
 const COUNTER_TILT = [-2.6, 1.8, -1.2, 2.4, -0.6, 1.4];
 
+const col0 = () => ((new Date().getDay() + 6) % 7 + 0.5) / 7 * 100;
+
 function partOfDay() {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
@@ -64,9 +67,22 @@ export default function OrdersView() {
   const [logOpen, setLogOpen] = useState(false);
   const [zoom, setZoomState] = useState<Zoom>(lastZoom);
   const phone = useMedia('(max-width: 760px)');
-  const setZoom = (z: Zoom) => { lastZoom = z; setZoomState(z); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const [focus, setFocus] = useState<{ date: Date; dir: number } | null>(null);
+  const setZoom = (z: Zoom) => {
+    lastZoom = z;
+    if (z === 'day') { setFocus(null); resetWeek(); }
+    setZoomState(z);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const openDay = (date: Date, dir = 0) => { rememberWeek(date); setFocus({ date, dir }); if (!dir) window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const closeDay = useCallback(() => setFocus(null), []);
+  const pickDay = useCallback((d: Date, dir: number) => { rememberWeek(d); setFocus({ date: d, dir }); }, []);
+  const toToday = useCallback(() => setZoom('day'), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Zoom into the chosen day's column (a row on phones).
+  const dayCol = focus ? ((focus.date.getDay() + 6) % 7 + 0.5) / 7 * 100 : col0();
+  const focusOrigin = phone ? `50% ${dayCol}%` : `${dayCol}% 6%`;
   // Zoom toward today's column in the week grid (a row on phones).
-  const col = ((new Date().getDay() + 6) % 7 + 0.5) / 7 * 100;
+  const col = col0();
   const origin = phone ? `50% ${col}%` : `${col}% 0%`;
 
   const making = useMemo(() => orders.filter((o) => o.status === 'new').sort((a, b) => a.pickupAt - b.pickupAt), [orders]);
@@ -103,8 +119,10 @@ export default function OrdersView() {
     <LayoutGroup>
       <motion.div className="d-page-head" variants={rise}>
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={zoom} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22, ease }}>
-            {zoom === 'day' ? (
+          <motion.div key={focus ? `d${focus.date.getTime()}` : zoom} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3, ease }}>
+            {focus ? (
+              <DayHead date={focus.date} onBack={closeDay} />
+            ) : zoom === 'day' ? (
               <>
                 <h1>{weekday} <em>{partOfDay()}</em></h1>
                 <p className="d-page-sub">
@@ -117,7 +135,7 @@ export default function OrdersView() {
             ) : (
               <>
                 <h1>The <em>week</em></h1>
-                <p className="d-page-sub">Tap a day for its prep list. Tap today to zoom back into the rail.</p>
+                <p className="d-page-sub">Tap any day to open its orders. Tap today to zoom back into the rail.</p>
               </>
             )}
           </motion.div>
@@ -125,13 +143,13 @@ export default function OrdersView() {
         <div className="d-head-actions">
           <div className="d-zoom" role="tablist" aria-label="Zoom">
             {(['day', 'week'] as Zoom[]).map((z) => (
-              <button key={z} type="button" role="tab" aria-selected={zoom === z} className={zoom === z ? 'active' : ''} onClick={() => setZoom(z)}>
+              <button key={z} type="button" role="tab" aria-selected={zoom === z} className={zoom === z ? 'active' : ''} onClick={() => (z === 'week' && focus ? closeDay() : setZoom(z))}>
                 {zoom === z && <motion.span className="d-filter-pill" layoutId="zoom-pill" transition={spring} />}
                 <span>{z === 'day' ? 'Today' : 'Week'}</span>
               </button>
             ))}
           </div>
-          <motion.button type="button" className="d-btn-primary" onClick={test} whileTap={{ scale: 0.95 }}>
+          <motion.button type="button" className="d-btn-primary" onClick={test} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 420, damping: 24 } }} whileTap={{ scale: 0.95 }} transition={spring}>
             <Plus size={17} strokeWidth={2.5} /> Send a test order
           </motion.button>
         </div>
@@ -195,7 +213,33 @@ export default function OrdersView() {
               exit={{ opacity: 0, scale: 1.3 }}
               transition={{ scale: { duration: 0.6, ease }, opacity: { duration: 0.35 } }}
             >
-              <WeekBoard onZoomToday={() => setZoom('day')} />
+              <AnimatePresence mode="popLayout" initial={false}>
+                {focus ? (
+                  <motion.div
+                    key="focus"
+                    className="d-zoom-layer"
+                    style={{ transformOrigin: focusOrigin }}
+                    initial={{ opacity: 0, scale: 0.86 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.86 }}
+                    transition={{ scale: { duration: 0.6, ease }, opacity: { duration: 0.35 } }}
+                  >
+                    <DayDetail date={focus.date} dir={focus.dir} onPick={pickDay} onToday={toToday} onBack={closeDay} />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="grid"
+                    className="d-zoom-layer"
+                    style={{ transformOrigin: focusOrigin }}
+                    initial={{ opacity: 0, scale: 1.14 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.14 }}
+                    transition={{ scale: { duration: 0.6, ease }, opacity: { duration: 0.35 } }}
+                  >
+                    <WeekBoard onZoomToday={toToday} onOpenDay={(d) => openDay(d)} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

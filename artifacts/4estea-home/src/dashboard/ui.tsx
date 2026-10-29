@@ -34,7 +34,7 @@ export function Switch({ on, onChange, label, tone = 'leaf' }: { on: boolean; on
       className={`d-switch d-switch--${tone} ${on ? 'on' : ''}`}
       onClick={(e) => { e.stopPropagation(); onChange(!on); }}
     >
-      <motion.span className="d-knob" layout transition={spring} />
+      <motion.span className="d-knob" layout transition={spring} whileTap={{ scaleX: 1.18 }} />
     </button>
   );
 }
@@ -134,7 +134,7 @@ export function Drawer({ open, onClose, title, children, footer }: { open: boole
               <h2>{title}</h2>
               <button type="button" className="d-icon-btn" onClick={onClose} aria-label="Close"><X size={20} /></button>
             </div>
-            <div className="d-drawer-body">{children}</div>
+            <motion.div className="d-drawer-body" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16, duration: 0.5, ease }}>{children}</motion.div>
             {footer && <div className="d-drawer-foot">{footer}</div>}
           </motion.aside>
         </>
@@ -194,5 +194,6 @@ export const page = {
 };
 export const rise = {
   hidden: { opacity: 0, y: 14 },
+  enter: { opacity: 0, y: 16 },
   show: { opacity: 1, y: 0, transition: { duration: 0.55, ease } },
 };

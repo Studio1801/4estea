@@ -2,29 +2,25 @@ import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ArrowUpRight } from 'lucide-react';
 import {
-  addDays, clock, daySummary, money2, orderTotal, photoFor, sameDay, startOfDay, useStore, weekStart,
+  addDays, clock, daySummary, orderTotal, photoFor, sameDay, startOfDay, useStore, weekStart,
   type Order,
 } from '@/lib/store';
-import { Drawer, ease, glide } from './ui';
+import { ease, glide } from './ui';
+import { BestThumb, MiniBars, WD, dollars, shortName, summary } from './day';
 
-const dollars = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
-const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const HOURS = ['10a', '11a', '12p', '1p', '2p', '3p', '4p', '5p', '6p', '7p', '8p'];
-
-// Short names so a whole order fits on a small slip.
-const shortName = (n: string) =>
-  n.replace('Grilled ', '').replace(' Bowl', '').replace('Lumpiang Shanghai', 'Lumpia').replace('Garlic Fried Chicken ', '')
-    .replace('Classic 4ESTEA Matcha', 'Classic Matcha').replace('Banana ', '');
-const summary = (o: Order) => o.lines.map((l) => `${l.qty} ${shortName(l.name)}`).join(', ');
+// The week being looked at survives zooming into a day and back out.
+let lastOffset = 0;
+export const weekOffsetOf = (d: Date) => Math.round((weekStart(d).getTime() - weekStart(Date.now()).getTime()) / (7 * 864e5));
+export const rememberWeek = (d: Date) => { lastOffset = weekOffsetOf(d); };
+export const resetWeek = () => { lastOffset = 0; };
 
 type Kind = 'past' | 'today' | 'future';
 
-export default function WeekBoard({ onZoomToday }: { onZoomToday: () => void }) {
+export default function WeekBoard({ onZoomToday, onOpenDay }: { onZoomToday: () => void; onOpenDay: (d: Date) => void }) {
   const orders = useStore((s) => s.orders);
   const menu = useStore((s) => s.menu);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useState(lastOffset);
   const [dir, setDir] = useState(0);
-  const [openDay, setOpenDay] = useState<Date | null>(null);
 
   const today = startOfDay(Date.now());
   const monday = addDays(weekStart(today), offset * 7);
@@ -53,22 +49,21 @@ export default function WeekBoard({ onZoomToday }: { onZoomToday: () => void }) 
   const label = offset === 0 ? 'This week' : offset === -1 ? 'Last week' : offset === 1 ? 'Next week' : `${-offset} weeks ago`;
   const range = `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to ${days[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
-  const go = (d: number) => { setDir(d); setOffset((o) => Math.min(1, Math.max(-3, o + d))); };
+  const go = (d: number) => { setDir(d); setOffset((o) => { const n = Math.min(1, Math.max(-3, o + d)); lastOffset = n; return n; }); };
 
-  const open = (c: (typeof cells)[number]) => (c.kind === 'today' ? onZoomToday() : setOpenDay(c.date));
-  const openCell = openDay ? cells.find((c) => sameDay(c.date, openDay)) : undefined;
+  const open = (c: (typeof cells)[number]) => (c.kind === 'today' ? onZoomToday() : onOpenDay(c.date));
 
   return (
     <div className="d-week-board">
       <div className="d-week-bar">
         <div className="d-week-nav">
-          <motion.button type="button" className="d-round" onClick={() => go(-1)} disabled={offset <= -3} whileTap={{ scale: 0.9 }} aria-label="Previous week"><ChevronLeft size={18} /></motion.button>
+          <motion.button type="button" className="d-round" onClick={() => go(-1)} disabled={offset <= -3} whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} aria-label="Previous week"><ChevronLeft size={18} /></motion.button>
           <AnimatePresence mode="popLayout" initial={false} custom={dir}>
             <motion.div key={offset} className="d-week-title" custom={dir} initial={{ opacity: 0, y: dir * 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: dir * -10 }} transition={{ duration: 0.25, ease }}>
               <strong>{label}</strong><span>{range}</span>
             </motion.div>
           </AnimatePresence>
-          <motion.button type="button" className="d-round" onClick={() => go(1)} disabled={offset >= 1} whileTap={{ scale: 0.9 }} aria-label="Next week"><ChevronRight size={18} /></motion.button>
+          <motion.button type="button" className="d-round" onClick={() => go(1)} disabled={offset >= 1} whileHover={{ x: 2 }} whileTap={{ scale: 0.9 }} aria-label="Next week"><ChevronRight size={18} /></motion.button>
           {offset !== 0 && <button type="button" className="d-text-btn" onClick={() => go(-offset)}>Back to this week</button>}
         </div>
         <p className="d-week-sum">
@@ -103,8 +98,8 @@ export default function WeekBoard({ onZoomToday }: { onZoomToday: () => void }) 
                 onClick={() => open(c)}
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 + i * 0.04, duration: 0.45, ease }}
-                whileTap={{ scale: 0.98 }}
+                transition={{ delay: 0.05 + i * 0.045, duration: 0.6, ease }}
+                whileHover={{ y: -5, transition: { type: 'spring', stiffness: 420, damping: 26 } }} whileTap={{ scale: 0.975 }}
               >
                 <div className="d-daycard-head">
                   <span>{WD[i]}</span>
@@ -148,13 +143,6 @@ export default function WeekBoard({ onZoomToday }: { onZoomToday: () => void }) 
         </AnimatePresence>
       </div>
 
-      <Drawer
-        open={!!openCell}
-        onClose={() => setOpenDay(null)}
-        title={openCell ? <>{openCell.date.toLocaleDateString('en-US', { weekday: 'long' })} <em>{openCell.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</em></> : ''}
-      >
-        {openCell && (openCell.kind === 'past' ? <PastDay cell={openCell} /> : <FutureDay orders={openCell.orders} />)}
-      </Drawer>
     </div>
   );
 }
@@ -184,80 +172,3 @@ function TodayBody({ orders }: { orders: Order[] }) {
     </>
   );
 }
-
-function MiniBars({ values, big = false }: { values: number[]; big?: boolean }) {
-  const max = Math.max(...values, 1);
-  return (
-    <div className={`d-minibars ${big ? 'd-minibars--big' : ''}`} aria-hidden={!big}>
-      {values.map((v, i) => (
-        <div key={i} className="d-minibar">
-          {big && <span className="d-minibar-val">{v ? dollars(v) : ''}</span>}
-          <div className="d-minibar-track">
-            <motion.div initial={{ scaleY: 0 }} animate={{ scaleY: Math.max(v / max, 0.04) }} transition={{ type: 'spring', stiffness: 160, damping: 20, delay: 0.15 + i * 0.03 }} className={v === max ? 'peak' : ''} />
-          </div>
-          {big && <span className="d-minibar-label">{HOURS[i]}</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BestThumb({ name, photo }: { name: string; photo?: string }) {
-  return <span className="d-thumb">{photo ? <img src={photo} alt="" /> : <i>{name[0]}</i>}</span>;
-}
-
-function PastDay({ cell }: { cell: { sales: number; count: number; hours: number[]; top: string } }) {
-  const menu = useStore((s) => s.menu);
-  const peak = cell.hours.indexOf(Math.max(...cell.hours));
-  return (
-    <div className="d-dayview">
-      <p className="d-dayview-story">
-        <mark>{dollars(cell.sales)}</mark> from <mark>{cell.count}</mark> orders, about {money2(cell.sales / cell.count)} a ticket. Busiest around <mark>{HOURS[peak].replace('a', ' am').replace('p', ' pm')}</mark>.
-      </p>
-      <h3>Hour by hour</h3>
-      <MiniBars values={cell.hours} big />
-      <h3>Sold most</h3>
-      <div className="d-dayview-best">
-        <BestThumb name={cell.top} photo={photoFor(menu.find((m) => m.name === cell.top))} />
-        <span>{cell.top}</span>
-      </div>
-    </div>
-  );
-}
-
-function FutureDay({ orders }: { orders: Order[] }) {
-  const prep = useMemo(() => {
-    const m = new Map<string, number>();
-    orders.forEach((o) => o.lines.forEach((l) => m.set(l.name, (m.get(l.name) ?? 0) + l.qty)));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [orders]);
-
-  if (!orders.length) return <p className="d-log-empty">Nothing booked for this day yet. Pre-orders from your website will land here.</p>;
-
-  return (
-    <div className="d-dayview">
-      <h3>Prep list</h3>
-      <ul className="d-prep">
-        {prep.map(([name, n], i) => (
-          <motion.li key={name} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.05, duration: 0.35, ease }}>
-            <b>{n}</b><span>{name}</span>
-          </motion.li>
-        ))}
-      </ul>
-      <h3>Pre-orders</h3>
-      <div className="d-preorders">
-        {orders.map((o, i) => (
-          <motion.div key={o.id} className="d-preorder" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.07, duration: 0.4, ease }}>
-            <div className="d-preorder-top"><span>{clock(o.pickupAt)}</span><b>{money2(orderTotal(o))}</b></div>
-            <div className="d-preorder-name">{o.name}</div>
-            {o.note && <p className="d-ticket-note">{o.note}</p>}
-            <ul className="d-ticket-items">
-              {o.lines.map((l, k) => <li key={k}><b>{l.qty}</b><span>{l.name}</span></li>)}
-            </ul>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
